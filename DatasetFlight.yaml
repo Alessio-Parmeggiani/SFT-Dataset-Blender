@@ -1,0 +1,4 @@
+train: train
+val: valid
+nc: 9
+names: ['Circle', 'Semicircle', 'QuarterCircle', 'Triangle', 'Square', 'Rectangle', 'Pentagon', 'Star', 'Cross']
