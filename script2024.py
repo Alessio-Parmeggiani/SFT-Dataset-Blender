@@ -8,12 +8,12 @@ import numpy as np
 #Check all these aprameters before starting generation 
 
 num_images=1 #How many images to create
-object_number_range=(6,12) # (x,y)= create between x and y objects, if x=y create x objects
+object_number_range=(40,40) # (x,y)= create between x and y objects, if x=y create x objects
 
 #* Paths for train, test and validation
 #! Change this paths to the ones in your system
 root_path=r'C:\Users\alessio\Desktop\DatasetFlight' #Example for windows
-root_path=r'D:\DatasetSFT' 
+#root_path=r'D:\DatasetSFT' 
 #root_path="/home/alessio/Desktop/Altro/DatasetFlight/images" #Example for linux
 
 dataset_path=os.path.join(root_path,'datasets')
@@ -35,6 +35,28 @@ symbols="ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 possible_materials = ['White', 'Black', 'Red',"Green","Blue", "Orange","Purple","Brown"]
 classes_list=["Circle", "Semicircle", "QuarterCircle", "Triangle", 
     "Square", "Rectangle","Pentagon", "Star", "Cross"]
+
+use_weight=False #if True, generate a random material and shape using weighted random choice
+material_weights={
+    "White":1,
+    "Black":1,
+    "Red":1,
+    "Green":1,
+    "Blue":1,
+    "Orange":1,
+    "Purple":1,
+    "Brown":1
+} #a value of X means that is X times more likely to be chosen
+shape_weights={}
+for i in range(len(classes_list)):
+    shape_weights[classes_list[i]]=1
+symbols_weight={}
+for i in range(len(symbols)):
+    symbols_weight[symbols[i]]=1
+
+
+
+
 collection = bpy.data.collections['Shapes'] #Blender collection from which to take objects
 #Check always that objects in collection and classes_list have matching names
 
@@ -59,6 +81,11 @@ min_y=-area_y/2
 max_y=area_y/2
 object_z=0.1 #putting target slightly above the ground to avoid Z-fighting
 object_scale_range=(1,1.1)
+limits_x=(-1000,1000) #object should not be outside of this area
+
+
+#used to avoid collisions between objects
+object_positions=[]
 
 
 #*Debug flags
@@ -159,17 +186,46 @@ def reset(keyword):
         if obj.name.startswith(keyword):
             bpy.data.objects.remove(obj, do_unlink=True)
 
+def is_colliding(pos, object_positions):
+    #Check approxiamtely if an object is colliding with another object
+    print("checking collision of object at position: ",pos
+          ," with objects at positions: ",object_positions)
+    object_radius=0.3
+    for obj in object_positions:
+        distance=np.sqrt((pos[0]-obj[0])**2+(pos[1]-obj[1])**2)
+        print("Distance: ",distance)
+        if distance < object_radius:
+            return True
+    return False
+
 def create_object(i,camera_y):
     #create random objects from a collection,assign a random color and move them to a random position
     
     #* Choosing object and material
-    obj = random.choice(collection.objects)
-    material = random.choice(possible_materials)
-    random_letter=random.choice(symbols)
-    #assign material for the letter different from the one of the object
-    letter_material = random.choice(possible_materials)
-    while letter_material == material:
+    obj =None
+    shape=None
+    material=None
+    random_letter=None
+    letter_material=None
+
+    if use_weight:
+        shape = random.choices(classes_list, shape_weights.values())[0]
+        obj = bpy.data.objects[shape]
+        material = random.choices(possible_materials, material_weights.values())[0]
+        random_letter=random.choices(symbols, symbols_weight.values())[0]
+        #assign material for the letter different from the one of the object
+        letter_material = random.choices(possible_materials, material_weights.values())[0]
+        while letter_material == material:
+            letter_material = random.choices(possible_materials, material_weights.values())[0]
+    else:
+        obj = random.choice(collection.objects)
+        shape = obj.name
+        material = random.choice(possible_materials)
+        random_letter=random.choice(symbols)
+        #assign material for the letter different from the one of the object
         letter_material = random.choice(possible_materials)
+        while letter_material == material:
+            letter_material = random.choice(possible_materials)
 
     print("Chosen: \n\tObject: ", obj.name, "|", material, 
         "\n\tLetter: ", random_letter, "|", letter_material)
@@ -180,7 +236,9 @@ def create_object(i,camera_y):
 
     # Create a new object with the same data
     new_obj = obj.copy()    
-    new_obj.name = "Dataset." + str(i) + "." + obj.name
+    #new_obj.name = "Dataset." + str(i) + "." + obj.name
+    separator="."
+    new_obj.name=separator.join(["Dataset",str(i),shape,material,random_letter,letter_material])
     new_obj.data = obj.data.copy()
     scene.collection.objects.link(new_obj)
 
@@ -188,8 +246,24 @@ def create_object(i,camera_y):
     #objects must be in an area of 21,33 x 109m
     
     #print(min_x,max_x,min_y,max_y)
-    object_y=camera_y+random.uniform(min_y, max_y)
-    object_x=random.uniform(min_x, max_x)
+    object_y=None
+    object_x=None
+    tries=0
+    while object_y is None or object_x is None or is_colliding((object_x,object_y), object_positions):
+        print("collision detected,regenerating position")
+        object_y=camera_y+random.uniform(min_y, max_y)
+        object_x=random.uniform(min_x, max_x)
+        while object_x < limits_x[0] or object_x > limits_x[1]:
+            object_x=random.uniform(min_x, max_x)
+        tries+=1
+        if tries>100:
+            print("Could not find a valid position for the object, exiting")
+            #delete object
+            bpy.data.objects.remove(new_obj, do_unlink=True)
+            return
+
+    object_positions.append((object_x,object_y))
+
     new_obj.location = (object_x, object_y , object_z)
     #slightly change scale
     object_scale=random.uniform(object_scale_range[0],object_scale_range[1])
@@ -251,6 +325,8 @@ with open(os.path.join(root_path,"DatasetFlight.yaml"), "w+") as f:
     
 
 for i in range(num_images):
+    object_positions=[] #reset the list of object positions
+
     img_name="img_"+str(i+img_offset)+".png"
     print("\n---------------------------\nGenerating image: ",img_name)
     
@@ -286,6 +362,7 @@ for i in range(num_images):
     #* Create the objects
     
     num_shapes = random.randint(object_number_range[0],object_number_range[1])
+
     # Create the objects
     if generate_shapes:
         for j in range(num_shapes):
@@ -335,11 +412,24 @@ for i in range(num_images):
                 width=width/scene.render.resolution_x
                 height=height/scene.render.resolution_y
                 #write the values in the file
-                shape=obj.name.split(".")[2]
+                #shape=obj.name.split(".")[2]
                 #for each object one line in format: class_id center_x center_y width height
-                f.write("{} {} {} {} {}\n".format(class2idx[shape],x_center,y_center,width,height))
-                print("For shape: ",shape, " wrote: ",class2idx[shape],x_center,y_center,width,height)
-    
+                #f.write("{} {} {} {} {}\n".format(class2idx[shape],x_center,y_center,width,height))
+                #print("For shape: ",shape, " wrote: ",class2idx[shape],x_center,y_center,width,height)
+
+                shape = obj.name.split(".")[2]
+                material = obj.name.split(".")[3]
+                symbol = obj.name.split(".")[4]
+                symbol_material = obj.name.split(".")[5]
+                #to get the class of the symbol just use its index number
+                symbol_index = symbols.index(symbol)
+                material_index = possible_materials.index(material)
+                symbol_material_index = possible_materials.index(symbol_material)
+
+                #for each object one line in format: class_id center_x center_y width height symbol_class
+                f.write("{} {} {} {} {} {} {} {}\n".format(
+                    class2idx[shape],x_center,y_center,width,height,
+                    symbol_index,material_index,symbol_material_index))
     #* maintain image only if at least one annotation is valid
     if not one_valid:
         os.remove(img_path.replace(".png",".txt"))

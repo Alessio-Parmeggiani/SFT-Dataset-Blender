@@ -42,6 +42,6 @@ def show_bounding_box(image_path, bounding_box_path):
     cv2.destroyAllWindows()
 
 # Test the function
-image_path = r"C:\Users\alessio\Desktop\DatasetFlight\datasets\train\img_0.jpg"
+image_path = r"C:\Users\alessio\Desktop\DatasetFlight\datasets\train\img_0.png"
 bounding_box_path = image_path.replace('jpg', 'txt')
 show_bounding_box(image_path, bounding_box_path)

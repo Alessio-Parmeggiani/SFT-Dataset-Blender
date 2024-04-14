@@ -1,0 +1,12 @@
+- [X] Colore forma e caratteri
+- [ ] Ah poi senti, non so se a te interessi o meno per quello che stai facendo ma considera che nel labeling noi abbiamo anche una classe a parte chiamata "emergent" per i manichini
+- [X] Sistemare marrone anzi forse è grigio, anzi forse è il nero sbiadito (marrone è ok)
+- [X] alcune lettere sono troppo ai bordi delle figure, soprattutto sui quarter circle stanno sempre fuori, le altre forme sembrano ok
+- [X] Genera forme fuori dalla pista, mettere vincolo
+- [X] Mettere vincolo sovrapposizione 
+- [X] rimuovere giallo, non c'è nel regolamento
+- [X] Il verde molto spesso è troppo fluo, a volte buono invece
+- [X] i rettangoli sono lievemente troppo stretti
+- [X] provare a mettere una temperatura della luce lievissimamente più fredda
+- [X] Bilanciare le classi, generarle in modo pesato rispetto a quelle che abbiamo del dataset reale
+- [ ] dobbiamo fare per forza tile direttamente con Blender, vogliono una griglia 8x8, perché altrimenti non abbiamo i label per le immagini tilate
