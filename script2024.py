@@ -8,11 +8,12 @@ import numpy as np
 #Check all these aprameters before starting generation 
 
 num_images=1 #How many images to create
-object_number_range=(2,2) # (x,y)= create between x and y objects, if x=y create x objects
+object_number_range=(6,12) # (x,y)= create between x and y objects, if x=y create x objects
 
 #* Paths for train, test and validation
 #! Change this paths to the ones in your system
 root_path=r'C:\Users\alessio\Desktop\DatasetFlight' #Example for windows
+root_path=r'D:\DatasetSFT' 
 #root_path="/home/alessio/Desktop/Altro/DatasetFlight/images" #Example for linux
 
 dataset_path=os.path.join(root_path,'datasets')
@@ -40,24 +41,24 @@ collection = bpy.data.collections['Shapes'] #Blender collection from which to ta
 
 #* Camera position & rotation. to find good values, change in blender and note the values
 #Position
-camera_altitude_range =(30,35)
+camera_altitude_range =(32,36)
 camera_x_range=(-2,2)
 camera_y_range=(-30,-120) 
 #Orientation
-camera_rot_x_range=(-4,4) #Pitch
-camera_rot_y_range=(-15,15) #Roll
+camera_rot_x_range=(-5,5) #Pitch
+camera_rot_y_range=(-20,20) #Roll
 camera_rot_z_range=(-15,15) #Yaw
 
 #* Objects random positions
 #Define the are near the camera where a target can spawn
 area_x=16
-area_y=15
+area_y=14
 min_x=-area_x/2
 max_x=area_x/2
 min_y=-area_y/2
 max_y=area_y/2
 object_z=0.1 #putting target slightly above the ground to avoid Z-fighting
-object_scale_range=(1,1.2)
+object_scale_range=(1,1.1)
 
 
 #*Debug flags
