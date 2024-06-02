@@ -8,7 +8,10 @@ import numpy as np
 #Check all these aprameters before starting generation 
 
 num_images=1 #How many images to create
-object_number_range=(40,40) # (x,y)= create between x and y objects, if x=y create x objects
+object_number_range=(4,4) # (x,y)= create between x and y objects, if x=y create x objects
+#*if in previous session you created 100 images, set img_offset=100
+#!otherwise they will be overwritten
+img_offset=0
 
 #* Paths for train, test and validation
 #! Change this paths to the ones in your system
@@ -22,19 +25,23 @@ test_path=os.path.join(dataset_path,'test')
 val_path=os.path.join(dataset_path,'valid')
 
 #* percentage of images for train, test and validation
-train_percentage=0.8
+train_percentage=1.0
 test_percentage=0
-val_percentage=0.2
+val_percentage=0
 
-#*if in previous session you created 100 images, set img_offset=100
-#!otherwise they will be overwritten
-img_offset=0
 
 #* parameters for generation
 symbols="ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 possible_materials = ['White', 'Black', 'Red',"Green","Blue", "Orange","Purple","Brown"]
-classes_list=["Circle", "Semicircle", "QuarterCircle", "Triangle", 
-    "Square", "Rectangle","Pentagon", "Star", "Cross"]
+possible_targets=["circle", "semi", "quarter", "triangle", "rectangle","pentagon", "star", "cross"]
+
+classes=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 
+          'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 
+          'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 
+          'U', 'V', 'W', 'X', 'Y', 'Z', 
+          'black', 'blue', 'brown', 'circle', 'cross', 'emergent', 
+          'green', 'orange', 'pentagon', 'purple', 'quarter', 
+          'rectangle', 'red', 'semi', 'star', 'triangle', 'white']
 
 use_weight=False #if True, generate a random material and shape using weighted random choice
 material_weights={
@@ -48,17 +55,14 @@ material_weights={
     "Brown":1
 } #a value of X means that is X times more likely to be chosen
 shape_weights={}
-for i in range(len(classes_list)):
-    shape_weights[classes_list[i]]=1
+for i in range(len(possible_targets)):
+    shape_weights[possible_targets[i]]=1
 symbols_weight={}
 for i in range(len(symbols)):
     symbols_weight[symbols[i]]=1
 
-
-
-
 collection = bpy.data.collections['Shapes'] #Blender collection from which to take objects
-#Check always that objects in collection and classes_list have matching names
+#Check always that objects in collection and possible_targets have matching names
 
 
 #* Camera position & rotation. to find good values, change in blender and note the values
@@ -74,7 +78,7 @@ camera_rot_z_range=(-15,15) #Yaw
 #* Objects random positions
 #Define the are near the camera where a target can spawn
 area_x=16
-area_y=14
+area_y=20
 min_x=-area_x/2
 max_x=area_x/2
 min_y=-area_y/2
@@ -87,18 +91,38 @@ limits_x=(-1000,1000) #object should not be outside of this area
 #used to avoid collisions between objects
 object_positions=[]
 
+#* Tile parameters
+create_tiles=True #Create tiles from the images
+tile_num=8 #Create NxN tiles from each image
+do_clean_empty_tiles=False #Delete tiles with no targets
+if create_tiles:
+    try:
+        from PIL import Image
+    except: 
+        print("Pillow not installed, installing now...")
+        import subprocess
+        import sys
+        python_exe = os.path.join(sys.prefix, 'bin', 'python.exe')
+        subprocess.call([python_exe, '-m', 'ensurepip'])
+        subprocess.call([python_exe, '-m', 'pip', 'install', '--upgrade', 'pip'])
+        subprocess.call([python_exe, '-m', 'pip', 'install', '--upgrade', 'pillow'])
+        from PIL import Image
+        print("Pillow installed successfully")
+        
 
-#*Debug flags
-generate_shapes=True
-move_camera=True
-render_image=True
-clean_after_render=True
+
+#*Debug flags (set all to true when generating the dataset)
+generate_shapes=True #generate random targets
+move_camera=True #move the camera to a random position for each image
+render_image=True #render the image
+clean_after_render=True #remove target from scene after rendering
 
 
 def clamp(x, minimum, maximum):
     return max(minimum, min(x, maximum))
 
 def camera_view_bounds_2d(scene, cam_ob, me_ob):
+    
     """
     Returns camera space bounding box of mesh object.
 
@@ -188,12 +212,12 @@ def reset(keyword):
 
 def is_colliding(pos, object_positions):
     #Check approxiamtely if an object is colliding with another object
-    print("checking collision of object at position: ",pos
-          ," with objects at positions: ",object_positions)
+    #print("checking collision of object at position: ",pos
+    #      ," with objects at positions: ",object_positions)
     object_radius=0.3
     for obj in object_positions:
         distance=np.sqrt((pos[0]-obj[0])**2+(pos[1]-obj[1])**2)
-        print("Distance: ",distance)
+        #print("Distance: ",distance)
         if distance < object_radius:
             return True
     return False
@@ -209,7 +233,7 @@ def create_object(i,camera_y):
     letter_material=None
 
     if use_weight:
-        shape = random.choices(classes_list, shape_weights.values())[0]
+        shape = random.choices(possible_targets, shape_weights.values())[0]
         obj = bpy.data.objects[shape]
         material = random.choices(possible_materials, material_weights.values())[0]
         random_letter=random.choices(symbols, symbols_weight.values())[0]
@@ -261,7 +285,7 @@ def create_object(i,camera_y):
             #delete object
             bpy.data.objects.remove(new_obj, do_unlink=True)
             return
-
+    #print("From camera_Y: ",camera_y," got object_Y: ",object_y)
     object_positions.append((object_x,object_y))
 
     new_obj.location = (object_x, object_y , object_z)
@@ -289,14 +313,161 @@ def create_object(i,camera_y):
     letter_obj.active_material = bpy.data.materials[letter_material]
     return obj.name
 
+def write_annotation_file(annotation_path,scene,camera):
+    one_valid=False #flag to check if at least one object  is in the image and can be annotated
+    with open(annotation_path, "w+") as f:
+        for obj in bpy.data.objects:
+            if obj.name.startswith("Dataset"):
+                print("Generating bounding box for object: {} at location: {}".format(obj.name,obj.location))
+                box=camera_view_bounds_2d(scene, camera,obj )
+                #if not zero
+                if sum(box) == 0: 
+                    continue
+                else: 
+                    one_valid=True
+                print(box)
+                #write the bounding box in yolo format
+                #x_center, y_center, width, height
+                x_center=box[0]+box[2]/2
+                y_center=box[1]+box[3]/2
+                width=box[2]
+                height=box[3]
+                #normalize the values
+                x_center=x_center/scene.render.resolution_x
+                y_center=y_center/scene.render.resolution_y
+                width=width/scene.render.resolution_x
+                height=height/scene.render.resolution_y
+
+                shape = obj.name.split(".")[2]
+                material = obj.name.split(".")[3]
+                symbol = obj.name.split(".")[4]
+                symbol_material = obj.name.split(".")[5] #not used
+
+                shape_id=classes.index(shape.lower())
+                material_id=classes.index(material.lower())
+                symbol_id=classes.index(symbol)
+
+                #for each object three lines in format: class_id center_x center_y width height
+                f.write("{} {} {} {} {}\n".format(shape_id,x_center,y_center,width,height))
+                f.write("{} {} {} {} {}\n".format(material_id,x_center,y_center,width,height))
+                f.write("{} {} {} {} {}\n".format(symbol_id,x_center,y_center,width,height))
+
+    return one_valid
+
+
+
+#**Image tiling
+
+#Get the path for the tile at a given index i,j and the original image path
+def get_image_tile_path(image_path, i, j):
+    return image_path.replace('.png', f'_tile_{i}_{j}.png')
+
+#Get the path for the annotation tile at a given index i,j and the original annotation path
+def get_annotation_tile_path(annotation_path, i, j):
+    return annotation_path.replace('.txt', f'_tile_{i}_{j}.txt')
+
+def split_image_into_tiles(image_path, n):
+    """
+    Generate n x n tiles from the image at the given path.
+    """
+    #n=4 -> 16 tiles
+    # Open the image file
+    img = Image.open(image_path)
+    # Calculate the width and height of each tile
+    width, height = img.size
+    tile_width = width // n
+    tile_height = height // n
+
+    # Loop over the image and save each tile
+    for i in range(n):
+        for j in range(n):
+            #path=image_path.replace('.png',f'_{index}.png')
+            path=get_image_tile_path(image_path,i,j)
+            left = i * tile_width
+            upper = j * tile_height
+            right = left + tile_width
+            lower = upper + tile_height
+            # Crop the tile out of the image
+            tile_img = img.crop((left, upper, right, lower))
+            # Save the tile to a file
+            tile_img.save(path)
+        
+    return tile_width, tile_height
+
+def create_annotations_for_tiles(annotation_path, tile_width, tile_height, n):
+    """
+    Given an annotation file for each image in the yolo format,
+    Where for each target in the image I have three rows:
+        shape_id x_center y_center width height
+        material_id x_center y_center width height
+        symbol_id x_center y_center width height
+    Create the new annotations for each generated tile fo the image
+    """
+    # Read the annotations
+    with open(annotation_path, 'r') as file:
+        lines = file.readlines()
+
+    # create the annotations for each tile
+    for l in range(0,len(lines), 3):
+        #print("\nProcessing tile: ", l // 3, " of ", len(lines) // 3, " tiles.")
+        line1 = lines[l]
+        line2 = lines[l+1]
+        line3 = lines[l+2]
+        # Parse the annotation
+        shape_id, x_center, y_center, width, height = map(float, line1.split())
+        material_id, _,_,_,_ = map(float, line2.split())
+        symbol_id, _, _, _, _ = map(float, line3.split())
+        # Check in which tile the annotation is
+        #print("Original center: ", x_center, y_center)
+
+        i = int(x_center // (1 / n))
+        j = int(y_center // (1 / n))
+
+        #print("Found corresponding tile: ", i, j, " of size ", tile_width, tile_height)
+        # Write the annotation for the tile
+        new_center = (x_center - i * (1 / n), y_center - j * (1 / n))
+        #multiply by n to get the new center, width and height
+        new_center=(new_center[0]*n,new_center[1]*n)
+        new_width = (width* n, height* n)
+
+        #print("New center: ", new_center)
+        #print("New width: ", new_width)
+        tile_annotation = f'{shape_id} {new_center[0]} {new_center[1]} {new_width[0]} {new_width[1]}\n'
+        tile_annotation += f'{material_id} {new_center[0]} {new_center[1]} {new_width[0]} {new_width[1]}\n'
+        tile_annotation += f'{symbol_id} {new_center[0]} {new_center[1]} {new_width[0]} {new_width[1]}\n'
+
+        # Save the annotation to a file
+        tile_annotation_path = get_annotation_tile_path(annotation_path, i, j)
+        #append to file and crete if it not exist
+        with open(tile_annotation_path, 'a') as file:
+            file.write(tile_annotation)
+
+def clean_empty_tiles(image_path, annotation_path, n,clean_tiles):
+    """
+    Delete the tiles with no corresponding annotations
+    """
+    print("Clean empty tiles set to: ",clean_tiles)
+    for i in range(n):
+        for j in range(n):
+            tile_annotation_path = get_annotation_tile_path(annotation_path, i, j)
+            if not os.path.exists(tile_annotation_path):
+                tile_image_path = get_image_tile_path(image_path, i, j)
+                if clean_tiles:
+                    os.remove(tile_image_path)
+                    print("Deleted: ", tile_image_path)  
+                else:
+                    #Create empty annotation file
+                    with open(tile_annotation_path, 'w') as file:
+                        file.write("")
+
 
 #Set up the scene
 scene = bpy.context.scene
 camera = scene.camera
 
-num_classes=len(classes_list)
-class2idx={classes_list[i]:i for i in range(num_classes)}
-idx2class={i:classes_list[i] for i in range(num_classes)}
+num_classes=len(possible_targets)
+class2idx={possible_targets[i]:i for i in range(num_classes)}
+idx2class={i:possible_targets[i] for i in range(num_classes)}
 
 #*YOLO need  fyle with some information about the dataset
 #write starting yaml file in the format:
@@ -320,58 +491,16 @@ with open(os.path.join(root_path,"DatasetFlight.yaml"), "w+") as f:
     f.write("nc: {}".format(num_classes))
     f.write("\n")
     #classes names
-    f.write("names: {}".format(classes_list))
+    f.write("names: {}".format(possible_targets))
     f.write("\n")
     
 
 for i in range(num_images):
     object_positions=[] #reset the list of object positions
 
+    #*** Set up paths
     img_name="img_"+str(i+img_offset)+".png"
     print("\n---------------------------\nGenerating image: ",img_name)
-    
-    #* Set up the camera
-    camera_x=random.uniform(camera_x_range[0],camera_x_range[1])
-    camera_y=random.uniform(camera_y_range[0],camera_y_range[1])
-    camera_z=random.uniform(camera_altitude_range[0],camera_altitude_range[1])
-    camera.rotation_mode = 'XYZ'
-
-    #Rotate and move camera
-    if move_camera:
-        #reset camera rotation
-        rot_x=random.uniform(camera_rot_x_range[0],camera_rot_x_range[1])
-        rot_y=random.uniform(camera_rot_y_range[0],camera_rot_y_range[1])
-        rot_z=random.uniform(camera_rot_z_range[0],camera_rot_z_range[1])
-        camera.rotation_euler = (0, 0, 0)
-        camera.location=(camera_x, camera_y , camera_z)
-        camera.rotation_euler = (np.radians(rot_x), np.radians(rot_y), np.radians(rot_z))
-
-    
-    #* change terrain
-    # get the material
-    mat = bpy.data.materials['Asphalt']
-    # get the nodes
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes["Noise Texture"].inputs[1].default_value=random.uniform(1,1)
-
-    #change light intensity between 0.5 and 1.2
-    bpy.data.worlds["World"].node_tree.nodes["Background"].inputs[1].default_value=random.uniform(0.8, 1.2)
-    #randomly rotate hdri
-    bpy.data.worlds["World"].node_tree.nodes["Mapping"].inputs[2].default_value[2]=random.uniform(0, 360)
-    #* Create the objects
-    
-    num_shapes = random.randint(object_number_range[0],object_number_range[1])
-
-    # Create the objects
-    if generate_shapes:
-        for j in range(num_shapes):
-            create_object(i,camera_y)
-
-
-    #* Create annotations
-    one_valid=False
-    
     #determine if test or train or valid
     dataset_chosen=random.choices([train_path,val_path,test_path],weights=[train_percentage,val_percentage,test_percentage])[0]
     print("chosen dataset: ",dataset_chosen)
@@ -381,59 +510,73 @@ for i in range(num_images):
     if not os.path.exists(dataset_chosen):
         os.makedirs(dataset_chosen)
 
+    
+    #*** Set up the camera
+    if move_camera:
+        camera_x=random.uniform(camera_x_range[0],camera_x_range[1])
+        camera_y=random.uniform(camera_y_range[0],camera_y_range[1])
+        camera_z=random.uniform(camera_altitude_range[0],camera_altitude_range[1])
+        camera.rotation_mode = 'XYZ'
+        #Rotate and move camera
+        #reset camera rotation
+        rot_x=random.uniform(camera_rot_x_range[0],camera_rot_x_range[1])
+        rot_y=random.uniform(camera_rot_y_range[0],camera_rot_y_range[1])
+        rot_z=random.uniform(camera_rot_z_range[0],camera_rot_z_range[1])
+        camera.rotation_euler = (0, 0, 0)
+        camera.location=(camera_x, camera_y , camera_z)
+        camera.rotation_euler = (np.radians(rot_x), np.radians(rot_y), np.radians(rot_z))
+    else:
+        camera_y=camera.location[1]
+    
+    #*** Modify environment
+    # get the material
+    mat = bpy.data.materials['Asphalt']
+    # get the nodes
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    nodes["Noise Texture"].inputs[1].default_value=random.uniform(1,1)
+    #change light intensity between 0.5 and 1.2
+    bpy.data.worlds["World"].node_tree.nodes["Background"].inputs[1].default_value=random.uniform(0.8, 1.2)
+    #randomly rotate hdri
+    bpy.data.worlds["World"].node_tree.nodes["Mapping"].inputs[2].default_value[2]=random.uniform(0, 360)
+    
+
+    #*** Create the objects
+    num_shapes = random.randint(object_number_range[0],object_number_range[1])
+    if generate_shapes:
+        for j in range(num_shapes):
+            create_object(i,camera_y)
+    
+
+    #*** Render the image
     if render_image:
         output_path = img_path
         scene.render.filepath = output_path
         bpy.ops.render.render(write_still=True)
         print("Image rendered and saved at: ",output_path)
         
+    #*** Create annotations
     #get the bounding box of the objects and write them in yolo format to file
     #one file per image, one line per object, file is named as the image
-    with open(img_path.replace(".png",".txt"), "w+") as f:
-        for obj in bpy.data.objects:
-            if obj.name.startswith("Dataset"):
-                print("Generating bounding box for object: {} at location: {}".format(obj.name,obj.location))
-                box=camera_view_bounds_2d(scene, camera,obj )
-                #if not zero
-                if sum(box) == 0: 
-                    continue
-                else: 
-                    one_valid=True
-                print(box)
-                #write the bounding box in yolo format
-                #x_center, y_center, width, height
-                x_center=box[0]+box[2]/2
-                y_center=box[1]+box[3]/2
-                width=box[2]
-                height=box[3]
-                #normalize the values
-                x_center=x_center/scene.render.resolution_x
-                y_center=y_center/scene.render.resolution_y
-                width=width/scene.render.resolution_x
-                height=height/scene.render.resolution_y
-                #write the values in the file
-                #shape=obj.name.split(".")[2]
-                #for each object one line in format: class_id center_x center_y width height
-                #f.write("{} {} {} {} {}\n".format(class2idx[shape],x_center,y_center,width,height))
-                #print("For shape: ",shape, " wrote: ",class2idx[shape],x_center,y_center,width,height)
+    annotation_path=img_path.replace(".png",".txt")
+    one_valid=write_annotation_file(annotation_path,scene,camera)
 
-                shape = obj.name.split(".")[2]
-                material = obj.name.split(".")[3]
-                symbol = obj.name.split(".")[4]
-                symbol_material = obj.name.split(".")[5]
-                #to get the class of the symbol just use its index number
-                symbol_index = symbols.index(symbol)
-                material_index = possible_materials.index(material)
-                symbol_material_index = possible_materials.index(symbol_material)
-
-                #for each object one line in format: class_id center_x center_y width height symbol_class
-                f.write("{} {} {} {} {} {} {} {}\n".format(
-                    class2idx[shape],x_center,y_center,width,height,
-                    symbol_index,material_index,symbol_material_index))
     #* maintain image only if at least one annotation is valid
     if not one_valid:
         os.remove(img_path.replace(".png",".txt"))
         os.remove(img_path)
+    else:
+        #* Generate tiles
+        if render_image and create_tiles:
+            tile_width, tile_height = split_image_into_tiles(img_path, tile_num)
+            #* Create annotations for the tiles
+            create_annotations_for_tiles(annotation_path, tile_width, tile_height, tile_num)
+            #* Clean empty tiles
+            clean_empty_tiles(img_path, annotation_path, tile_num,do_clean_empty_tiles)
+
+            #remove original image and annotation
+            os.remove(img_path)
+            os.remove(annotation_path)
         
     #* reset the scene
     if clean_after_render:

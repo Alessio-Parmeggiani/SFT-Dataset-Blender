@@ -9,4 +9,4 @@
 - [X] i rettangoli sono lievemente troppo stretti
 - [X] provare a mettere una temperatura della luce lievissimamente più fredda
 - [X] Bilanciare le classi, generarle in modo pesato rispetto a quelle che abbiamo del dataset reale
-- [ ] dobbiamo fare per forza tile direttamente con Blender, vogliono una griglia 8x8, perché altrimenti non abbiamo i label per le immagini tilate
+- [X] dobbiamo fare per forza tile direttamente con Blender, vogliono una griglia 8x8, perché altrimenti non abbiamo i label per le immagini tilate
